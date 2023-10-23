@@ -1,91 +1,13 @@
 import os
 import struct
+import keyboard
+import numpy
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import pygame
 from pygame.locals import *
 
-#Slider
-import tkinter as tk
-from tkinter import ttk
-
-
-# root window
-root = tk.Tk()
-root.geometry('300x200')
-root.resizable(False, False)
-root.title('Slider Demo')
-
-
-root.columnconfigure(0, weight=1)
-root.columnconfigure(1, weight=3)
-
-
-# slider current value
-current_value = tk.DoubleVar()
-
-
-def get_current_value():
-    return '{: .2f}'.format(current_value.get())
-
-
-def slider_changed(event):
-    value_label.configure(text=get_current_value())
-
-
-# label for the slider
-slider_label = ttk.Label(
-    root,
-    text='Slider:'
-)
-
-slider_label.grid(
-    column=0,
-    row=0,
-    sticky='w'
-)
-
-#  slider
-slider = ttk.Scale(
-    root,
-    from_=0,
-    to=100,
-    orient='horizontal',  # vertical
-    command=slider_changed,
-    variable=current_value
-)
-
-slider.grid(
-    column=1,
-    row=0,
-    sticky='we'
-)
-
-# current value label
-current_value_label = ttk.Label(
-    root,
-    text='Current Value:'
-)
-
-current_value_label.grid(
-    row=1,
-    columnspan=2,
-    sticky='n',
-    ipadx=10,
-    ipady=10
-)
-
-# value label
-value_label = ttk.Label(
-    root,
-    text=get_current_value()
-)
-value_label.grid(
-    row=2,
-    columnspan=2,
-    sticky='n'
-)
 
 
 # class for a 3d point
@@ -234,7 +156,12 @@ class draw_scene:
         self.model1 = loader()
         # self.model1.load_stl(os.path.abspath('')+'/text.stl')
         self.model1.load_stl(os.path.abspath('') + '/Lower.stl')
+        self.model1.load_stl(os.path.abspath('') + '/Upper.stl')
         self.init_shading()
+        self.BETA = 0
+        self.ALPHA = 0
+        self.GAMMA = 0
+        self.SCALE = 1
 
     # solid model with a light / shading
     def init_shading(self):
@@ -259,6 +186,7 @@ class draw_scene:
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(45, 1.0 * width / height, 0.1, 100.0)
+        glTranslatef(0.0, 0.0, -100.0)
         # gluLookAt(0.0,0.0,45.0,0,0,0,0,40.0,0)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
@@ -283,53 +211,60 @@ class draw_scene:
     def draw(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
+        glRotatef(self.BETA, 0, 1, 0)  # Rotation along the y axis, with the x_mouse_position
+        glRotatef(self.ALPHA, 1, 0, 0)  # Rotation along the x axis, with the y_mouse_position
 
-        glTranslatef(0.0, 0.0, -100.0)
-        #glRotate(45,0,1,0)
+        glScalef(self.SCALE, self.SCALE, self.SCALE)
+
         self.model1.draw()
 
+    def rotate(self,alpha,beta):
+        self.ALPHA += alpha
+        self.BETA += beta
+        print("Alpha = " + str(self.ALPHA) + " ; Beta = " + str(self.BETA))
 
-
+    def scale(self,factor):
+        self.SCALE += factor # or = self.Scale* factor ??
+        print("Scale = " + str(self.SCALE))
 
 # main program loop
 def main():
     # initalize pygame
     pygame.init()
-    pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
-
+    #screen = pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
+    screen = pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
     # setup the open gl scene
     scene = draw_scene()
-    scene.resize(640, 480)
+    #scene.resize(640, 480)
+    scene.resize(1280, 960)
 
     frames = 0
     ticks = pygame.time.get_ticks()
-    #while True:  # making a loop
-    #    try:  # used try so that if user pressed other than the given key error will not be shown
-    #        if keyboard.is_pressed('q'):  # if key 'q' is pressed
-    #            print('You Pressed A Key!')
-    #            break  # finishing the loop
-    #    except:
-    #        break
 
     while 1:
         print("Test")
         #event = pygame.event.poll()
         #if event.type == QUIT or event.type == KEYDOWN or event.key == K_ESCAPE:
         events = pygame.event.get()
-        b = True;
         for event in events:
-            if event.type == pygame.KEYDOWN:
-                print("quit")
-                b = False
-        if b == False:
-            break
+            if event.type == pygame.MOUSEMOTION:
+                if pygame.mouse.get_pressed()[0]:
+                    scene.rotate(event.rel[1],event.rel[0])
+
+                    print("Rotating")
+            elif event.type == pygame.MOUSEWHEEL:
+                scale = event.y / 1 + 1  # +1.something, -1.something
+                scene.scale(scale)
+                #glScale(scale, scale, scale)
+                print("Scaling")
+
+        glClear(GL_COLOR_BUFFER_BIT)
         # draw the scene
         scene.draw()
         pygame.display.flip()
         frames = frames + 1
         #Slider
-        root.mainloop()
-        root.sh
+        #root.mainloop()
 
     print
     "fps:  %d" % ((frames * 1000) / (pygame.time.get_ticks() - ticks))
