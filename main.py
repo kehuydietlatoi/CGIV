@@ -2,13 +2,23 @@ import os
 import struct
 import keyboard
 import numpy
+import math
 
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import pygame
 from pygame.locals import *
 
+import PySimpleGUI as sg
 
+layout = [[sg.Text("Controlls")], 
+          [sg.Text("X-Pos:  "), sg.InputText()],
+          [sg.Text("Y-Pos:  "), sg.InputText()],
+          [sg.Text("Z-Pos:  "), sg.InputText()],
+          [sg.Text("X-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
+          [sg.Text("Y-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
+          [sg.Text("Z-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
+          [sg.Button(button_text="OK")]]
 
 # class for a 3d point
 class createpoint:
@@ -156,12 +166,15 @@ class draw_scene:
         self.model1 = loader()
         # self.model1.load_stl(os.path.abspath('')+'/text.stl')
         self.model1.load_stl(os.path.abspath('') + '/Lower.stl')
-        self.model1.load_stl(os.path.abspath('') + '/Upper.stl')
+        #self.model1.load_stl(os.path.abspath('') + '/Upper.stl')
         self.init_shading()
         self.BETA = 0
         self.ALPHA = 0
         self.GAMMA = 0
         self.SCALE = 1
+        self.xPos = 0
+        self.yPos = 0
+        self.zPos = -100
 
     # solid model with a light / shading
     def init_shading(self):
@@ -213,6 +226,8 @@ class draw_scene:
         glLoadIdentity()
         glRotatef(self.BETA, 0, 1, 0)  # Rotation along the y axis, with the x_mouse_position
         glRotatef(self.ALPHA, 1, 0, 0)  # Rotation along the x axis, with the y_mouse_position
+        glRotatef(self.GAMMA, 0, 0, 1)
+        #glTranslatef(self.xPos, self.yPos, self.zPos)
 
         glScalef(self.SCALE, self.SCALE, self.SCALE)
 
@@ -227,11 +242,21 @@ class draw_scene:
         self.SCALE += factor # or = self.Scale* factor ??
         print("Scale = " + str(self.SCALE))
 
+    def set_trans_rot_values(self,values):
+        if not values[0] == "":
+            self.xPos = float(values[0])
+        if not values[1] == "":
+            self.yPos = float(values[1])
+        if not values[2] == "":
+            self.zPos = float(values[2])
+        self.ALPHA = values[3]
+        self.BETA = values[4]
+        self.GAMMA = values[5]
+
 # main program loop
 def main():
     # initalize pygame
     pygame.init()
-    #screen = pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
     screen = pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
     # setup the open gl scene
     scene = draw_scene()
@@ -241,31 +266,44 @@ def main():
     frames = 0
     ticks = pygame.time.get_ticks()
 
+    window = sg.Window("InputWindow",layout)
+
     while 1:
         print("Test")
-        #event = pygame.event.poll()
-        #if event.type == QUIT or event.type == KEYDOWN or event.key == K_ESCAPE:
-        events = pygame.event.get()
-        for event in events:
-            if event.type == pygame.MOUSEMOTION:
-                if pygame.mouse.get_pressed()[0]:
-                    scene.rotate(event.rel[1],event.rel[0])
+        
+        #GUI
+        guiEvent, values = window.read()
+        if guiEvent == sg.WIN_CLOSED:
+            break   
+        elif guiEvent == "OK":
+            scene.set_trans_rot_values(values)
+            glClear(GL_COLOR_BUFFER_BIT)
+            # draw the scene
+            scene.draw()
+            pygame.display.flip()
+            frames = frames + 1
 
-                    print("Rotating")
-            elif event.type == pygame.MOUSEWHEEL:
-                scale = event.y / 1 + 1  # +1.something, -1.something
-                scene.scale(scale)
-                #glScale(scale, scale, scale)
-                print("Scaling")
+        #events = pygame.event.get()
+        #for event in events:
+        #    if event.type == pygame.MOUSEMOTION:
+        #        if pygame.mouse.get_pressed()[0]:
+        #            scene.rotate(event.rel[1],event.rel[0])#
+
+        #            print("Rotating")
+        #    elif event.type == pygame.MOUSEWHEEL:
+        #        scale = event.y / 1 + 1  # +1.something, -1.something
+        #        scene.scale(scale)
+        #        #glScale(scale, scale, scale)
+        #        print("Scaling")
 
         glClear(GL_COLOR_BUFFER_BIT)
-        # draw the scene
+        #draw the scene
         scene.draw()
         pygame.display.flip()
         frames = frames + 1
         #Slider
         #root.mainloop()
-
+    window.close()
     print
     "fps:  %d" % ((frames * 1000) / (pygame.time.get_ticks() - ticks))
 
