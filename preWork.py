@@ -90,12 +90,13 @@ class loader:
     def count_adjacent(self):
         positions = []  #list of registered positions
         tri_counter = 0 #counter of all triangles in model
-        start_time = time.time()
+        #start_time = time.time()
         for tri in self.get_triangles():    #for all triangles in model
             tri_counter += 1       #test to check if all triangles are checked
             if tri_counter % 100 == 0:
-                end_time = time.time() - start_time
-                print(str(tri_counter) + " Faces checked in " + str(end_time))
+                #end_time = time.time() - start_time
+                #print(str(tri_counter) + " Faces checked in " + str(end_time) + "s")
+                print(str(tri_counter) + " Faces checked")
             #print(str(tri_counter) + ": [" + str(tri.points[0].x) + ", " + str(tri.points[0].y) + ", " + str(tri.points[0].z) + 
             #      "],[" + str(tri.points[1].x) + ", " + str(tri.points[1].y) + ", " + str(tri.points[1].z) + 
             #      "],[" + str(tri.points[2].x) + ", " + str(tri.points[2].y) + ", " + str(tri.points[2].z) + "]")
@@ -115,6 +116,8 @@ class loader:
                         already_saved = True
                 if not already_saved:               # if it hasn't been saved, count adjacent and save
                     positions.append(pos)
+                    if len(positions) % 100 == 0:
+                        print(str(len(positions)) + " Points found")
                     for triangle in self.get_triangles():
                         for point in triangle.points:
                             if is_in_range(point, pos):
@@ -124,6 +127,7 @@ class loader:
                 else:
                     already_saved = False
         print(str(tri_counter) + " Faces")
+        print(str(len(positions)) + " Points")
 
     # load stl file detects if the file is a text file or binary file
     def load_stl(self, filename):
