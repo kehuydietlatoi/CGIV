@@ -6,6 +6,7 @@ from typing import Tuple, Any
 
 import keyboard
 import math
+import time
 
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
@@ -14,56 +15,6 @@ import pygame
 from pygame.locals import *
 
 import PySimpleGUI as sg
-
-vertex_shader = """
-varying vec3 vN;
-varying vec3 v;
-varying vec4 color;
-void main(void)  
-{     
-   v = vec3(gl_ModelViewMatrix * gl_Vertex);       
-   vN = normalize(gl_NormalMatrix * gl_Normal);
-   color = gl_Color;
-   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;  
-}
-"""
-
-fragment_shader = """
-varying vec3 vN;
-varying vec3 v; 
-varying vec4 color;
-#define MAX_LIGHTS 1 
-void main (void) 
-{ 
-   vec3 N = normalize(vN);
-   vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
-
-   for (int i=0;i<MAX_LIGHTS;i++)
-   {
-      vec3 L = normalize(gl_LightSource[i].position.xyz - v); 
-      vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0) 
-      vec3 R = normalize(-reflect(L,N)); 
-
-      vec4 Iamb = gl_LightSource[i].ambient; 
-      vec4 Idiff = gl_LightSource[i].diffuse * max(dot(N,L), 0.0);
-      Idiff = clamp(Idiff, 0.0, 1.0); 
-      vec4 Ispec = gl_LightSource[i].specular * pow(max(dot(R,E),0.0),0.3*gl_FrontMaterial.shininess);
-      Ispec = clamp(Ispec, 0.0, 1.0); 
-
-      finalColor += Iamb + Idiff + Ispec;
-   }
-   gl_FragColor = vec4(1.0, 0.0, 0.0, 0.0);// color * finalColor; 
-}
-"""
-layout = [[sg.Text("Controlls")],
-          [sg.Text("X-Pos:  "), sg.InputText()],
-          [sg.Text("Y-Pos:  "), sg.InputText()],
-          [sg.Text("Z-Pos:  "), sg.InputText()],
-          [sg.Text("X-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
-          [sg.Text("Y-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
-          [sg.Text("Z-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
-          [sg.Text("Scale:  "), sg.Button(button_text="   -   "), sg.Button(button_text="   +   ")],
-          [sg.Button(button_text="OK")]]
 
 pos_delta = 0.1
 
@@ -86,7 +37,6 @@ class createpoint:
 
     def glvertex(self):
         glVertex3f(self.x, self.y, self.z)
-
 
 # class for a 3d face on a model
 class createtriangle:
@@ -139,9 +89,13 @@ class loader:
     #count all adjacent triangles to all points of all triangles
     def count_adjacent(self):
         positions = []  #list of registered positions
-        #tri_counter = 0 #
+        tri_counter = 0 #counter of all triangles in model
+        start_time = time.time()
         for tri in self.get_triangles():    #for all triangles in model
-            #tri_counter += 1       #test to check if all triangles are checked
+            tri_counter += 1       #test to check if all triangles are checked
+            if tri_counter % 100 == 0:
+                end_time = time.time() - start_time
+                print(str(tri_counter) + " Faces checked in " + str(end_time))
             #print(str(tri_counter) + ": [" + str(tri.points[0].x) + ", " + str(tri.points[0].y) + ", " + str(tri.points[0].z) + 
             #      "],[" + str(tri.points[1].x) + ", " + str(tri.points[1].y) + ", " + str(tri.points[1].z) + 
             #      "],[" + str(tri.points[2].x) + ", " + str(tri.points[2].y) + ", " + str(tri.points[2].z) + "]")
@@ -154,7 +108,8 @@ class loader:
                         for point in triangle.points:
                             if is_in_range(point, pos):
                                 counter += 1
-                    print(str(counter) + " : " + str(pos.x) + "," + str(pos.y) + ","+ str(pos.z))
+                    #show number of adjacent triangles to point
+                    #print(str(counter) + " : " + str(pos.x) + "," + str(pos.y) + ","+ str(pos.z))
                 for savedPosition in positions:     #chek if point has been saved before
                     if is_in_range(pos, savedPosition):
                         already_saved = True
@@ -165,9 +120,10 @@ class loader:
                             if is_in_range(point, pos):
                                 counter += 1
                     #show number of adjacent triangles to point
-                    print(str(counter) + " : " + str(pos.x) + "," + str(pos.y) + ","+ str(pos.z))
+                    #print(str(counter) + " : " + str(pos.x) + "," + str(pos.y) + ","+ str(pos.z))
                 else:
                     already_saved = False
+        print(str(tri_counter) + " Faces")
 
     # load stl file detects if the file is a text file or binary file
     def load_stl(self, filename):
@@ -254,184 +210,13 @@ class loader:
                 break
         fp.close()
 
-
-class draw_scene:
-    def __init__(self, style=1):
-        # create a model instance and
-        self.model1 = loader()
-        self.model1.load_stl(os.path.abspath('') + '/Lower.stl')
-        #self.model1.load_stl(os.path.abspath('') + '/Upper.stl')
-        #self.model1.load_stl(os.path.abspath('') + '/test_cube.stl')
-        self.init_shading()
-        self.BETA = 0
-        self.ALPHA = 0
-        self.GAMMA = 0
-        self.SCALE = 1.0
-        self.xPos = 0
-        self.yPos = 0
-        self.zPos = -100
-
-    # solid model with a light / shading
-    def init_shading(self):
-        glShadeModel(GL_SMOOTH)
-        glClearColor(0.0, 0.0, 0.0, 0.0)
-        glClearDepth(1.0)
-        glEnable(GL_DEPTH_TEST)
-        glShadeModel(GL_SMOOTH)
-        glDepthFunc(GL_LEQUAL)
-        glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST)
-
-        glEnable(GL_COLOR_MATERIAL)
-        glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0)
-        glLight(GL_LIGHT0, GL_POSITION, (0, 1, 1, 0))
-        glMatrixMode(GL_MODELVIEW)
-
-    def resize(self, width, height):
-        if height == 0:
-            height = 1
-        glViewport(0, 0, width, height)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45, 1.0 * width / height, 0.1, 100.0)
-        glTranslatef(0.0, 0.0, -105.0)
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-
-    def init(self):
-        #glShadeModel(GL_SMOOTH)
-        glClearColor(0.0, 0.0, 0.0, 0.0)
-        glClearDepth(1.0)
-        glEnable(GL_DEPTH_TEST)
-        #glShadeModel(GL_SMOOTH)
-        glDepthFunc(GL_LEQUAL)
-        glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST)
-
-        glEnable(GL_COLOR_MATERIAL)
-
-        glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0)
-        glLight(GL_LIGHT0, GL_POSITION, (0, 1, 1, 0))
-
-        glMatrixMode(GL_MODELVIEW)
-
-    def draw(self):
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
-        glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0)
-        glEnable(GL_COLOR_MATERIAL)
-        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
-        glLoadIdentity()
-        glRotatef(self.BETA, 0, 1, 0)  # Rotation along the y axis, with the x_mouse_position
-        glRotatef(self.ALPHA, 1, 0, 0)  # Rotation along the x axis, with the y_mouse_position
-        glRotatef(self.GAMMA, 0, 0, 1)
-        glTranslatef(self.xPos, self.yPos, self.zPos)
-        # glTranslatef(self.xPos, self.yPos, self.zPos)
-
-        glScalef(self.SCALE, self.SCALE, self.SCALE)
-
-        self.model1.draw()
-        glDisable(GL_LIGHT0)
-        glDisable(GL_LIGHTING)
-        glDisable(GL_COLOR_MATERIAL)
-
-    def rotate(self, alpha, beta):
-        self.ALPHA += alpha
-        self.BETA += beta
-        print("Alpha = " + str(self.ALPHA) + " ; Beta = " + str(self.BETA))
-
-    def scale(self, factor):
-        self.SCALE += factor  # or = self.Scale* factor ??
-        print("Scale = " + str(self.SCALE))
-
-    def set_trans_rot_values(self, values):
-        if not values[0] == "":
-            self.xPos = float(values[0])
-        else:
-            self.xPos = 0
-        if not values[1] == "":
-            self.yPos = float(values[1])
-        else:
-            self.yPos = 0
-        if not values[2] == "":
-            self.zPos = float(values[2])
-        else:
-            self.zPos = 0
-        self.ALPHA = values[3]
-        self.BETA = values[4]
-        self.GAMMA = values[5]
-
-    def set_scale(self,val):
-        if val == "-":
-            self.SCALE -= .1
-        else:
-            self.SCALE += .1
-
 # main program loop
 def main():
-    global program
-    # initalize pygame
-    pygame.init()
-    screen = pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
-    # setup the open gl scene
-    scene = draw_scene()
-    # scene.resize(640, 480)
-    scene.resize(1280, 960)
-
-    frames = 0
-    ticks = pygame.time.get_ticks()
-    program = compileProgram(
-        compileShader(vertex_shader, GL_VERTEX_SHADER),
-        compileShader(fragment_shader, GL_FRAGMENT_SHADER))
-
-    window = sg.Window("InputWindow", layout)
-
-    while 1:
-        print("Test")
-
-        # GUI
-        # parameter: x -20 z 65
-        guiEvent, values = window.read()
-        if guiEvent == sg.WIN_CLOSED:
-            break
-        elif guiEvent == "OK":
-            print(values)
-            scene.set_trans_rot_values(values)
-            glClear(GL_COLOR_BUFFER_BIT)
-            # draw the scene
-            scene.draw()
-            pygame.display.flip()
-            frames = frames + 1
-        elif guiEvent == "   -   ":
-            scene.set_scale("-")
-        elif guiEvent == "   +   ":
-            scene.set_scale("+")
-
-
-            
-
-        # events = pygame.event.get()
-        # for event in events:
-        #    if event.type == pygame.MOUSEMOTION:
-        #        if pygame.mouse.get_pressed()[0]:
-        #            scene.rotate(event.rel[1],event.rel[0])#
-
-        #            print("Rotating")
-        #    elif event.type == pygame.MOUSEWHEEL:
-        #        scale = event.y / 1 + 1  # +1.something, -1.something
-        #        scene.scale(scale)
-        #        #glScale(scale, scale, scale)
-        #        print("Scaling")
-
-        glClear(GL_COLOR_BUFFER_BIT)
-        # draw the scene
-        scene.draw()
-        pygame.display.flip()
-        frames = frames + 1
-        # Slider
-        # root.mainloop()
-    window.close()
+    model = loader()
+    model.load_stl(os.path.abspath('') + '/Lower.stl')
+    #model.load_stl(os.path.abspath('') + '/Upper.stl')
+    #model.load_stl(os.path.abspath('') + '/test_cube.stl')
+    model.count_adjacent()
 
 
 if __name__ == '__main__':
