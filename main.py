@@ -318,6 +318,12 @@ class draw_scene:
         self.BETA = values[4]
         self.GAMMA = values[5]
 
+    def set_scale(self,val):
+        if val == "-":
+            self.SCALE -= .1
+        else:
+            self.SCALE += .1
+
 # main program loop
 def main():
     global program
