@@ -1,17 +1,59 @@
 import os
 import struct
+from typing import Tuple, Any
+
 import keyboard
-import numpy
 import math
 
 from OpenGL.GL import *
+from OpenGL.GL.shaders import compileProgram, compileShader
 from OpenGL.GLU import *
 import pygame
 from pygame.locals import *
 
 import PySimpleGUI as sg
 
-layout = [[sg.Text("Controlls")], 
+vertex_shader = """
+varying vec3 vN;
+varying vec3 v;
+varying vec4 color;
+void main(void)  
+{     
+   v = vec3(gl_ModelViewMatrix * gl_Vertex);       
+   vN = normalize(gl_NormalMatrix * gl_Normal);
+   color = gl_Color;
+   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;  
+}
+"""
+
+fragment_shader = """
+varying vec3 vN;
+varying vec3 v; 
+varying vec4 color;
+#define MAX_LIGHTS 1 
+void main (void) 
+{ 
+   vec3 N = normalize(vN);
+   vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
+
+   for (int i=0;i<MAX_LIGHTS;i++)
+   {
+      vec3 L = normalize(gl_LightSource[i].position.xyz - v); 
+      vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0) 
+      vec3 R = normalize(-reflect(L,N)); 
+
+      vec4 Iamb = gl_LightSource[i].ambient; 
+      vec4 Idiff = gl_LightSource[i].diffuse * max(dot(N,L), 0.0);
+      Idiff = clamp(Idiff, 0.0, 1.0); 
+      vec4 Ispec = gl_LightSource[i].specular * pow(max(dot(R,E),0.0),0.3*gl_FrontMaterial.shininess);
+      Ispec = clamp(Ispec, 0.0, 1.0); 
+
+      finalColor += Iamb + Idiff + Ispec;
+   }
+   gl_FragColor = color * finalColor; 
+}
+"""
+layout = [[sg.Text("Controlls")],
           [sg.Text("X-Pos:  "), sg.InputText()],
           [sg.Text("Y-Pos:  "), sg.InputText()],
           [sg.Text("Z-Pos:  "), sg.InputText()],
@@ -19,6 +61,7 @@ layout = [[sg.Text("Controlls")],
           [sg.Text("Y-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
           [sg.Text("Z-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
           [sg.Button(button_text="OK")]]
+
 
 # class for a 3d point
 class createpoint:
@@ -70,6 +113,7 @@ class loader:
 
     # draw the models faces
     def draw(self):
+        glUseProgram(program)
         glBegin(GL_TRIANGLES)
         for tri in self.get_triangles():
             glNormal3f(tri.normal.x, tri.normal.y, tri.normal.z)
@@ -77,6 +121,7 @@ class loader:
             glVertex3f(tri.points[1].x, tri.points[1].y, tri.points[1].z)
             glVertex3f(tri.points[2].x, tri.points[2].y, tri.points[2].z)
         glEnd()
+        glUseProgram(0)
 
     # load stl file detects if the file is a text file or binary file
     def load_stl(self, filename):
@@ -100,6 +145,9 @@ class loader:
         fp = open(filename, 'r')
 
         for line in fp.readlines():
+
+            triangle = []
+            normal: tuple[Any, Any, Any] = (1, 2, 3)  # dummy init
             words = line.split()
             if len(words) > 0:
                 if words[0] == 'solid':
@@ -107,8 +155,8 @@ class loader:
 
                 if words[0] == 'facet':
                     center = [0.0, 0.0, 0.0]
-                    triangle = []
-                    normal = (eval(words[2]), eval(words[3]), eval(words[4]))
+                    normal: tuple[Any, Any, Any] = (eval(words[2]), eval(words[3]), eval(words[4]))
+                    print(normal)
 
                 if words[0] == 'vertex':
                     triangle.append((eval(words[1]), eval(words[2]), eval(words[3])))
@@ -166,7 +214,7 @@ class draw_scene:
         self.model1 = loader()
         # self.model1.load_stl(os.path.abspath('')+'/text.stl')
         self.model1.load_stl(os.path.abspath('') + '/Lower.stl')
-        #self.model1.load_stl(os.path.abspath('') + '/Upper.stl')
+        # self.model1.load_stl(os.path.abspath('') + '/Upper.stl')
         self.init_shading()
         self.BETA = 0
         self.ALPHA = 0
@@ -199,17 +247,17 @@ class draw_scene:
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(45, 1.0 * width / height, 0.1, 100.0)
-        glTranslatef(0.0, 0.0, -100.0)
+        glTranslatef(0.0, 0.0, -105.0)
         # gluLookAt(0.0,0.0,45.0,0,0,0,0,40.0,0)
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
     def init(self):
-        glShadeModel(GL_SMOOTH)
+        #glShadeModel(GL_SMOOTH)
         glClearColor(0.0, 0.0, 0.0, 0.0)
         glClearDepth(1.0)
         glEnable(GL_DEPTH_TEST)
-        glShadeModel(GL_SMOOTH)
+        #glShadeModel(GL_SMOOTH)
         glDepthFunc(GL_LEQUAL)
         glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST)
 
@@ -223,59 +271,81 @@ class draw_scene:
 
     def draw(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+        glEnable(GL_LIGHTING)
+        glEnable(GL_LIGHT0)
+        glEnable(GL_COLOR_MATERIAL)
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
         glLoadIdentity()
         glRotatef(self.BETA, 0, 1, 0)  # Rotation along the y axis, with the x_mouse_position
         glRotatef(self.ALPHA, 1, 0, 0)  # Rotation along the x axis, with the y_mouse_position
         glRotatef(self.GAMMA, 0, 0, 1)
-        #glTranslatef(self.xPos, self.yPos, self.zPos)
+        glTranslatef(self.xPos, self.yPos, self.zPos)
+        # glTranslatef(self.xPos, self.yPos, self.zPos)
 
         glScalef(self.SCALE, self.SCALE, self.SCALE)
 
         self.model1.draw()
+        glDisable(GL_LIGHT0)
+        glDisable(GL_LIGHTING)
+        glDisable(GL_COLOR_MATERIAL)
 
-    def rotate(self,alpha,beta):
+    def rotate(self, alpha, beta):
         self.ALPHA += alpha
         self.BETA += beta
         print("Alpha = " + str(self.ALPHA) + " ; Beta = " + str(self.BETA))
 
-    def scale(self,factor):
-        self.SCALE += factor # or = self.Scale* factor ??
+    def scale(self, factor):
+        self.SCALE += factor  # or = self.Scale* factor ??
         print("Scale = " + str(self.SCALE))
 
-    def set_trans_rot_values(self,values):
+    def set_trans_rot_values(self, values):
         if not values[0] == "":
             self.xPos = float(values[0])
+        else:
+            self.xPos = 0
         if not values[1] == "":
             self.yPos = float(values[1])
+        else:
+            self.yPos = 0
         if not values[2] == "":
             self.zPos = float(values[2])
+        else:
+            self.zPos = 0
         self.ALPHA = values[3]
         self.BETA = values[4]
         self.GAMMA = values[5]
 
+
 # main program loop
 def main():
+    global program
     # initalize pygame
     pygame.init()
     screen = pygame.display.set_mode((1280, 960), OPENGL | DOUBLEBUF)
     # setup the open gl scene
     scene = draw_scene()
-    #scene.resize(640, 480)
+    # scene.resize(640, 480)
     scene.resize(1280, 960)
 
     frames = 0
     ticks = pygame.time.get_ticks()
+    program = compileProgram(
+        compileShader(vertex_shader, GL_VERTEX_SHADER),
+        compileShader(fragment_shader, GL_FRAGMENT_SHADER))
 
-    window = sg.Window("InputWindow",layout)
+    window = sg.Window("InputWindow", layout)
 
     while 1:
         print("Test")
-        
-        #GUI
+
+        # GUI
+        # parameter: x -20 z 65
         guiEvent, values = window.read()
         if guiEvent == sg.WIN_CLOSED:
-            break   
+            break
         elif guiEvent == "OK":
+            print(values)
             scene.set_trans_rot_values(values)
             glClear(GL_COLOR_BUFFER_BIT)
             # draw the scene
@@ -283,8 +353,8 @@ def main():
             pygame.display.flip()
             frames = frames + 1
 
-        #events = pygame.event.get()
-        #for event in events:
+        # events = pygame.event.get()
+        # for event in events:
         #    if event.type == pygame.MOUSEMOTION:
         #        if pygame.mouse.get_pressed()[0]:
         #            scene.rotate(event.rel[1],event.rel[0])#
@@ -297,15 +367,13 @@ def main():
         #        print("Scaling")
 
         glClear(GL_COLOR_BUFFER_BIT)
-        #draw the scene
+        # draw the scene
         scene.draw()
         pygame.display.flip()
         frames = frames + 1
-        #Slider
-        #root.mainloop()
+        # Slider
+        # root.mainloop()
     window.close()
-    print
-    "fps:  %d" % ((frames * 1000) / (pygame.time.get_ticks() - ticks))
 
 
 if __name__ == '__main__':
