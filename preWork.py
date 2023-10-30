@@ -17,7 +17,7 @@ from pygame.locals import *
 
 import PySimpleGUI as sg
 
-pos_delta = 0.1
+pos_delta = 0.001
 
 class cornerNormal:
     def __init__(self, pos, normal) -> None:
@@ -145,7 +145,7 @@ class loader:
                     newNormal = cornerNormal(pos, tri.normal)
                     self.cornerNormals.append(newNormal)    #save them
                 else:   #cornerNormals is not empty
-                    for normal in self.cornerNormals:   #chek all saved Normals
+                    for normal in reversed(self.cornerNormals):   #chek all saved Normals #check reversed!
                         if normal.is_point_in_range(pos):   #if point has been saved before
                             normal.add_adjacent(tri.normal)     #add normal to saved
                             already_saved = True
@@ -163,7 +163,7 @@ class loader:
 
         end_time = time.time() - start_time
         print(str(tri_counter) + " Faces and ")
-        print(str(len(self.cornerNormals)) + " Points found in " + str(end_time/360 )+ " h")
+        print(str(len(self.cornerNormals)) + " Points found in " + str(end_time/3600 )+ " h")
 
     def add_corner_normals(self, triangle):
         if len(self.cornerNormals) == 0:    #First triangle doesn't need a check
