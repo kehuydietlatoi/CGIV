@@ -2,6 +2,8 @@ import os
 import struct
 from typing import Tuple, Any
 
+from typing import Tuple, Any
+
 import keyboard
 import math
 
@@ -315,13 +317,6 @@ class draw_scene:
         self.ALPHA = values[3]
         self.BETA = values[4]
         self.GAMMA = values[5]
-
-    def set_scale(self, val):
-        if val == "-":
-            self.SCALE -= .1
-        else:
-            self.SCALE += .1
-
 
 # main program loop
 def main():
