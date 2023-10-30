@@ -6,6 +6,7 @@ from typing import Tuple, Any
 
 import keyboard
 import math
+import numpy as np
 
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
