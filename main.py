@@ -20,42 +20,40 @@ vertex_shader = """
 varying vec3 vN;
 varying vec3 v;
 varying vec4 color;
-void main(void)  
-{     
-   v = vec3(gl_ModelViewMatrix * gl_Vertex);       
+void main(void)
+{
+   v = vec3(gl_ModelViewMatrix * gl_Vertex);
    vN = normalize(gl_NormalMatrix * gl_Normal);
-   color = gl_Color;
-   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;  
+   color = vec4(vN,1.0);
+   gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
 }
 """
 
 fragment_shader = """
-varying vec3 vN;
-varying vec3 v; 
 varying vec4 color;
 #define MAX_LIGHTS 1 
 void main (void) 
 { 
-   vec3 N = normalize(vN);
-   vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
-
-   for (int i=0;i<MAX_LIGHTS;i++)
-   {
-      vec3 L = normalize(gl_LightSource[i].position.xyz - v); 
-      vec3 E = normalize(-v); // we are in Eye Coordinates, so EyePos is (0,0,0) 
-      vec3 R = normalize(-reflect(L,N)); 
-
-      vec4 Iamb = gl_LightSource[i].ambient; 
-      vec4 Idiff = gl_LightSource[i].diffuse * max(dot(N,L), 0.0);
-      Idiff = clamp(Idiff, 0.0, 1.0); 
-      vec4 Ispec = gl_LightSource[i].specular * pow(max(dot(R,E),0.0),0.3*gl_FrontMaterial.shininess);
-      Ispec = clamp(Ispec, 0.0, 1.0); 
-
-      finalColor += Iamb + Idiff + Ispec;
-   }
-   gl_FragColor = vec4(1.0, 0.0, 0.0, 0.0);// color * finalColor; 
+   gl_FragColor = color; 
 }
 """
+
+class Vertex:
+    def __init__(self, x, y, z):
+        self.x = x
+        self.y = y
+        self.z = z
+
+    def __eq__(self, other):
+        if isinstance(other, Vertex):
+            return self.x == other.x and self.y == other.y and self.z == other.z
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self.x, self.y, self.z))
+    def getXYZ(self):
+        return self.x,self.y,self.z
+
 layout = [[sg.Text("Controlls")],
           [sg.Text("X-Pos:  "), sg.InputText()],
           [sg.Text("Y-Pos:  "), sg.InputText()],
@@ -64,6 +62,9 @@ layout = [[sg.Text("Controlls")],
           [sg.Text("Y-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
           [sg.Text("Z-Rot:  "), sg.Slider(range=(-180, 180), default_value=0, orientation='horizontal')],
           [sg.Text("Scale:  "), sg.Button(button_text="   -   "), sg.Button(button_text="   +   ")],
+          [sg.Text("Flat-Shading"), sg.Radio('', 'RAD1', default=True, key='Flat')],
+          [sg.Text("Gouraud-Shading"), sg.Radio('', 'RAD1', default=False, key='Gouraud')],
+          [sg.Text("Mixed-Shading"), sg.Radio('', 'RAD1', default=False, key='Mixed')],
           [sg.Button(button_text="OK")]]
 
 pos_delta = 0.1
@@ -75,6 +76,13 @@ def is_in_range(pos1, pos2):
             if pos1.z < (pos2.z + pos_delta) and pos1.z > (pos2.z - pos_delta):
                 return True
     return False
+
+def angle_between(v1, v2):
+    angle = np.arccos(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+    return angle/np.pi * 180
+
+
+
 
 # class for a 3d point
 class createpoint:
@@ -117,6 +125,7 @@ class createtriangle:
 
 class loader:
     model = []
+    verticesDict = {}
 
     # return the faces of the triangles
     def get_triangles(self):
@@ -124,17 +133,51 @@ class loader:
             for face in self.model:
                 yield face
 
+    #Check if Triangle is part of a Corner
+    def is_triangle_corner(self,triangle):
+        for point in triangle.points:
+            cur = self.verticesDict.get(Vertex(point.x, point.y, point.z))
+            if cur[3]:
+                return True
+        return False
+    
     # draw the models faces
-    def draw(self):
+    def draw(self,mode):
         glUseProgram(program)
-        glBegin(GL_TRIANGLES)
-        for tri in self.get_triangles():
-            glNormal3f(tri.normal.x, tri.normal.y, tri.normal.z)
-            glVertex3f(tri.points[0].x, tri.points[0].y, tri.points[0].z)
-            glVertex3f(tri.points[1].x, tri.points[1].y, tri.points[1].z)
-            glVertex3f(tri.points[2].x, tri.points[2].y, tri.points[2].z)
+        if mode == 1: # Flat-Shading
+            glBegin(GL_TRIANGLES)
+            for tri in self.get_triangles():
+                glNormal3f(-tri.normal.x, -tri.normal.y, -tri.normal.z)
+                glVertex3f(tri.points[0].x, tri.points[0].y, tri.points[0].z)
+                glVertex3f(tri.points[1].x, tri.points[1].y, tri.points[1].z)
+                glVertex3f(tri.points[2].x, tri.points[2].y, tri.points[2].z)
             
-        glEnd()
+            glEnd()
+        elif mode == 2: #Gouraud-Shading
+            glBegin(GL_TRIANGLES)  #https://docs.gl/gl3/glBegin
+            for tri in self.get_triangles():
+                for point in tri.points:
+                    curVertex = Vertex(point.x, point.y, point.z)
+                    cur = self.verticesDict.get(curVertex)
+                    glNormal3f(cur[1][0],cur[1][1],cur[1][2])
+                    glVertex3f(point.x,point.y,point.z)
+            glEnd()
+        elif mode == 3: #Mixed-Shading
+            glBegin(GL_TRIANGLES)
+            for tri in self.get_triangles():
+                isCorner = self.is_triangle_corner(tri)
+                for point in tri.points:
+                    curVertex = Vertex(point.x, point.y, point.z)
+                    cur = self.verticesDict.get(curVertex)
+                    glNormal3f(cur[1][0],cur[1][1],cur[1][2])
+                    glVertex3f(point.x,point.y,point.z)
+                if isCorner:
+                    glNormal3f(-tri.normal.x, -tri.normal.y, -tri.normal.z)
+                    glVertex3f(tri.points[0].x, tri.points[0].y, tri.points[0].z)
+                    glVertex3f(tri.points[1].x, tri.points[1].y, tri.points[1].z)
+                    glVertex3f(tri.points[2].x, tri.points[2].y, tri.points[2].z)
+            glEnd()
+
         glUseProgram(0)
 
     #count all adjacent triangles to all points of all triangles
@@ -186,6 +229,7 @@ class loader:
             print
             "reading binary stl file " + str(filename, )
             self.load_binary_stl(filename)
+            self.load_binary_stl_cornerNormals(filename)
 
     # read text stl match keywords to grab the points to build the model
     def load_text_stl(self, filename):
@@ -212,6 +256,114 @@ class loader:
                     # make sure we got the correct number of values before storing
                     if len(triangle) == 3:
                         self.model.append(createtriangle(triangle[0], triangle[1], triangle[2], normal))
+        fp.close()
+    
+    def load_binary_stl_cornerNormals(self, filename):
+        fp = open(filename, 'rb')
+        h = fp.read(80)
+
+        l = struct.unpack('I', fp.read(4))[0]
+        count = 0
+        while True:
+            try:
+                n = [0, 0 ,0]
+                p = fp.read(12)
+                if len(p) == 0:  # moved to here, otherwise the last triangle is added tiwce!
+                    break
+                if len(p) == 12:
+                    n = struct.unpack('f', p[0:4])[0], struct.unpack('f', p[4:8])[0], struct.unpack('f', p[8:12])[0]
+
+                p = fp.read(12)
+                if len(p) == 12:
+                    p1 = struct.unpack('f', p[0:4])[0], struct.unpack('f', p[4:8])[0], struct.unpack('f', p[8:12])[0]
+                    curVertex = Vertex(p1[0], p1[1], p1[2])
+                    cur = self.verticesDict.get(curVertex)
+                    if cur is None:
+                         self.verticesDict.update({curVertex: [1, n, [n], False]}) 
+                        # self.verticesDict.update({curVertex: [1, [n]]})
+                    else:
+                        newNormal = [cur[1][0] + n[0], cur[1][1] + n[1], cur[1][2] + n[2]]
+                        normals = cur[2]
+                        isCorner = False
+                        for vector in normals:
+                            if 80 < angle_between(vector,n) < 100:
+                                isCorner = True
+                                break
+                        normals.append(n)
+                        # curNormal = cur[1]
+                        # curNormal.append(n)
+                        # self.verticesDict.update({curVertex: [1 + cur[0], curNormal]})
+                        if isCorner:
+                            self.verticesDict.update({curVertex: [1 + cur[0], newNormal, normals, True]})
+                        else:
+                            self.verticesDict.update({curVertex: [1 + cur[0], newNormal, normals, cur[3]]})
+
+                p = fp.read(12)
+                if len(p) == 12:
+                    p2 = struct.unpack('f', p[0:4])[0], struct.unpack('f', p[4:8])[0], struct.unpack('f', p[8:12])[0]
+                    curVertex = Vertex(p2[0], p2[1], p2[2])
+                    cur = self.verticesDict.get(curVertex)
+                    if cur == None:
+                        self.verticesDict.update({curVertex: [1, n, [n], False]})
+                        # self.verticesDict.update({curVertex: [1, [n]]})
+                    else:
+                        newNormal = [cur[1][0] + n[0], cur[1][1] + n[1], cur[1][2] + n[2]]
+                        normals = cur[2]
+                        isCorner = False
+                        for vector in normals:
+                            if 80 < angle_between(vector,n) < 100:
+                                isCorner = True
+                                break
+                        normals.append(n)
+                        # curNormal = cur[1]
+                        # curNormal.append(n)
+                        # self.verticesDict.update({curVertex: [1 + cur[0], curNormal]})                        
+                        if isCorner:
+                            self.verticesDict.update({curVertex: [1 + cur[0], newNormal, normals, True]})
+                        else:
+                            self.verticesDict.update({curVertex: [1 + cur[0], newNormal, normals, cur[3]]})
+
+                p = fp.read(12)
+                if len(p) == 12:
+                    p3 = struct.unpack('f', p[0:4])[0], struct.unpack('f', p[4:8])[0], struct.unpack('f', p[8:12])[0]
+                    curVertex = Vertex(p3[0], p3[1], p3[2])
+                    cur = self.verticesDict.get(curVertex)
+                    if cur == None:
+                        self.verticesDict.update({curVertex: [1, n, [n], False]})
+                        # self.verticesDict.update({curVertex: [1, [n]]})
+                    else:
+                        newNormal = [cur[1][0] + n[0], cur[1][1] + n[1], cur[1][2] + n[2]]
+                        normals = cur[2]
+                        isCorner = False
+                        for vector in normals:
+                            if 80 < angle_between(vector,n) < 100:
+                                isCorner = True
+                                break
+                        normals.append(n)
+                        # curNormal = cur[1]
+                        # curNormal.append(n)
+                        # self.verticesDict.update({curVertex: [1 + cur[0], curNormal]})                        
+                        if isCorner:
+                            self.verticesDict.update({curVertex: [1 + cur[0], newNormal, normals, True]})
+                        else:
+                            self.verticesDict.update({curVertex: [1 + cur[0], newNormal, normals, cur[3]]})
+
+                fp.read(2)
+
+
+            except EOFError:
+                break
+        normalized_vector =[[],[],[]]
+        for key in self.verticesDict.keys():
+            values = self.verticesDict.get(key)
+            res = values[1]
+            #magnitude = math.sqrt(sum(x ** 2 for x in res))
+            normalized_vector = res / np.linalg.norm(res)
+            
+            #print(str(math.sqrt(sum(i**2 for i in normalized_vector))))
+            #check for 90°
+            self.verticesDict.update({key: [values[0],normalized_vector,values[2], values[3]]})
+            #print(str(key.getXYZ()) + str(normalized_vector))
         fp.close()
 
     # load binary stl file check wikipedia for the binary layout of the file
@@ -271,6 +423,7 @@ class draw_scene:
         self.xPos = 0
         self.yPos = 0
         self.zPos = -100
+        self.mode = 1
 
     # solid model with a light / shading
     def init_shading(self):
@@ -332,7 +485,7 @@ class draw_scene:
 
         glScalef(self.SCALE, self.SCALE, self.SCALE)
 
-        self.model1.draw()
+        self.model1.draw(self.mode)
         glDisable(GL_LIGHT0)
         glDisable(GL_LIGHTING)
         glDisable(GL_COLOR_MATERIAL)
@@ -362,6 +515,13 @@ class draw_scene:
         self.ALPHA = values[3]
         self.BETA = values[4]
         self.GAMMA = values[5]
+        if values['Flat']:
+            self.mode = 1
+        elif values['Gouraud']:
+            self.mode = 2
+        elif values['Mixed']:
+            self.mode = 3
+        
 
     def set_scale(self,val):
         if val == "-":
@@ -397,7 +557,7 @@ def main():
         if guiEvent == sg.WIN_CLOSED:
             break
         elif guiEvent == "OK":
-            print(values)
+            #print(values)
             scene.set_trans_rot_values(values)
             glClear(GL_COLOR_BUFFER_BIT)
             # draw the scene
@@ -408,6 +568,7 @@ def main():
             scene.set_scale("-")
         elif guiEvent == "   +   ":
             scene.set_scale("+")
+
 
 
             

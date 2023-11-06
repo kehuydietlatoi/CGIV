@@ -17,7 +17,7 @@ from pygame.locals import *
 
 import PySimpleGUI as sg
 
-pos_delta = 0.001
+pos_delta = 0.000001
 
 class cornerNormal:
     def __init__(self, pos, normal) -> None:
